@@ -6,6 +6,7 @@ use std::time::Duration;
 use actix_files::NamedFile;
 use actix_web::{
     dev::{fn_service, ServiceRequest, ServiceResponse},
+    guard,
     http::header::ContentType,
     middleware, web, App, HttpRequest, HttpResponse, Responder,
 };
@@ -13,6 +14,11 @@ use actix_web_httpauth::middleware::HttpAuthentication;
 use anyhow::Result;
 use clap::{crate_version, CommandFactory, Parser};
 use colored::*;
+use dav_server::{
+    actix::{DavRequest, DavResponse},
+    localfs::LocalFs,
+    DavConfig, DavHandler,
+};
 use fast_qr::QRBuilder;
 use log::{error, warn};
 
@@ -308,7 +314,8 @@ fn configure_header(conf: &MiniserveConfig) -> middleware::DefaultHeaders {
 /// This is where we configure the app to serve an index file, the file listing, or a single file.
 fn configure_app(app: &mut web::ServiceConfig, conf: &MiniserveConfig) {
     let dir_service = || {
-        let mut files = actix_files::Files::new("", &conf.path);
+        // use routing guard so propfind and options requests fall through to the webdav handler
+        let mut files = actix_files::Files::new("", &conf.path).guard(guard::Get());
 
         // Use specific index file if one was provided.
         if let Some(ref index_file) = conf.index {
@@ -376,6 +383,31 @@ fn configure_app(app: &mut web::ServiceConfig, conf: &MiniserveConfig) {
         }
         // Handle directories
         app.service(dir_service());
+
+        let dav_server = DavHandler::builder()
+            .filesystem(LocalFs::new(&conf.path, false, false, false))
+            .build_handler();
+
+        app.app_data(web::Data::new(dav_server.clone()));
+
+        // order is important: the dir service above is checked first, but has a guard::Get(),
+        // so options and propfind go here. if this service was registered first, it would swallow the gets
+        app.service(
+            web::resource("/{tail:.*}")
+                .guard(guard::Any(guard::Options()).or(guard::Method(
+                    http::Method::from_bytes(b"PROPFIND").unwrap(),
+                )))
+                .to(dav_handler),
+        );
+    }
+}
+
+async fn dav_handler(req: DavRequest, davhandler: web::Data<DavHandler>) -> DavResponse {
+    if let Some(prefix) = req.prefix() {
+        let config = DavConfig::new().strip_prefix(prefix);
+        davhandler.handle_with(config, req.request).await.into()
+    } else {
+        davhandler.handle(req.request).await.into()
     }
 }
 
