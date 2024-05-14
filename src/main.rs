@@ -16,7 +16,6 @@ use clap::{crate_version, CommandFactory, Parser};
 use colored::*;
 use dav_server::{
     actix::{DavRequest, DavResponse},
-    localfs::LocalFs,
     DavConfig, DavHandler,
 };
 use fast_qr::QRBuilder;
@@ -33,9 +32,11 @@ mod file_utils;
 mod listing;
 mod pipe;
 mod renderer;
+mod webdav_fs;
 
 use crate::config::MiniserveConfig;
 use crate::errors::{RuntimeError, StartupError};
+use crate::webdav_fs::RestrictedFs;
 
 static STYLESHEET: &str = grass::include!("data/style.scss");
 
@@ -384,8 +385,10 @@ fn configure_app(app: &mut web::ServiceConfig, conf: &MiniserveConfig) {
         // Handle directories
         app.service(dir_service());
 
+        let restricted = RestrictedFs::new(&conf.path, conf.show_hidden);
         let dav_server = DavHandler::builder()
-            .filesystem(LocalFs::new(&conf.path, false, false, false))
+            .filesystem(restricted)
+            .hide_symlinks(conf.no_symlinks)
             .build_handler();
 
         app.app_data(web::Data::new(dav_server.clone()));
