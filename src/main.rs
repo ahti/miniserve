@@ -385,23 +385,25 @@ fn configure_app(app: &mut web::ServiceConfig, conf: &MiniserveConfig) {
         // Handle directories
         app.service(dir_service());
 
-        let restricted = RestrictedFs::new(&conf.path, conf.show_hidden);
-        let dav_server = DavHandler::builder()
-            .filesystem(restricted)
-            .hide_symlinks(conf.no_symlinks)
-            .build_handler();
+        if !conf.disable_indexing {
+            let restricted = RestrictedFs::new(&conf.path, conf.show_hidden);
+            let dav_server = DavHandler::builder()
+                .filesystem(restricted)
+                .hide_symlinks(conf.no_symlinks)
+                .build_handler();
 
-        app.app_data(web::Data::new(dav_server.clone()));
+            app.app_data(web::Data::new(dav_server.clone()));
 
-        // order is important: the dir service above is checked first, but has a guard::Get(),
-        // so options and propfind go here. if this service was registered first, it would swallow the gets
-        app.service(
-            web::resource("/{tail:.*}")
-                .guard(guard::Any(guard::Options()).or(guard::Method(
-                    http::Method::from_bytes(b"PROPFIND").unwrap(),
-                )))
-                .to(dav_handler),
-        );
+            // order is important: the dir service above is checked first, but has a guard::Get(),
+            // so options and propfind go here. if this service was registered first, it would swallow the gets
+            app.service(
+                web::resource("/{tail:.*}")
+                    .guard(guard::Any(guard::Options()).or(guard::Method(
+                        http::Method::from_bytes(b"PROPFIND").unwrap(),
+                    )))
+                    .to(dav_handler),
+            );
+        }
     }
 }
 
