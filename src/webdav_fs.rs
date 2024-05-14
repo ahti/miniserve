@@ -13,8 +13,8 @@ impl RestrictedFs {
         let local = LocalFs::new(base, false, false, false);
         Box::new({
             RestrictedFs {
-                local: local,
-                allow_hidden: allow_hidden,
+                local,
+                allow_hidden,
             }
         })
     }
@@ -22,7 +22,7 @@ impl RestrictedFs {
 
 fn check_path(path: &DavPath) -> bool {
     path.as_pathbuf().components().all(|c| match c {
-        Component::Normal(name) => name.to_str().map_or(false, |s| !s.starts_with(".")),
+        Component::Normal(name) => name.to_str().map_or(false, |s| !s.starts_with('.')),
         _ => true,
     })
 }
