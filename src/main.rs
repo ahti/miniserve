@@ -390,6 +390,7 @@ fn configure_app(app: &mut web::ServiceConfig, conf: &MiniserveConfig) {
             let dav_server = DavHandler::builder()
                 .filesystem(restricted)
                 .hide_symlinks(conf.no_symlinks)
+                .strip_prefix(conf.route_prefix.to_owned())
                 .build_handler();
 
             app.app_data(web::Data::new(dav_server.clone()));
