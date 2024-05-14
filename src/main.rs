@@ -316,7 +316,8 @@ fn configure_header(conf: &MiniserveConfig) -> middleware::DefaultHeaders {
 fn configure_app(app: &mut web::ServiceConfig, conf: &MiniserveConfig) {
     let dir_service = || {
         // use routing guard so propfind and options requests fall through to the webdav handler
-        let mut files = actix_files::Files::new("", &conf.path).guard(guard::Get());
+        let mut files = actix_files::Files::new("", &conf.path)
+            .guard(guard::Any(guard::Get()).or(guard::Head()));
 
         // Use specific index file if one was provided.
         if let Some(ref index_file) = conf.index {
@@ -395,8 +396,8 @@ fn configure_app(app: &mut web::ServiceConfig, conf: &MiniserveConfig) {
 
             app.app_data(web::Data::new(dav_server.clone()));
 
-            // order is important: the dir service above is checked first, but has a guard::Get(),
-            // so options and propfind go here. if this service was registered first, it would swallow the gets
+            // order is important: the dir service above is checked first, but has a method guard,
+            // so options and propfind go here. if this service was registered first, it would swallow the gets/heads
             app.service(
                 web::resource("/{tail:.*}")
                     .guard(guard::Any(guard::Options()).or(guard::Method(
